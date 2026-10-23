@@ -882,3 +882,4 @@ test.describe("group creation and member invitation", () => {
     ).toContainText("2 members");
   });
 });
+
