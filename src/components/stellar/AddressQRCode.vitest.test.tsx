@@ -27,9 +27,10 @@ describe("AddressQRCode", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the QR code with correct value and size", () => {
+  it("renders the QR code with correct value and size", async () => {
     render(<AddressQRCode value={TEST_ADDRESS} size={200} />);
-    const canvas = screen.getByTestId("qr-canvas");
+    // The QR encoder is code-split (#707), so the canvas arrives a tick later.
+    const canvas = await screen.findByTestId("qr-canvas");
     expect(canvas).toBeInTheDocument();
     expect(canvas.getAttribute("data-value")).toBe(TEST_ADDRESS);
   });

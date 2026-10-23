@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG } from "@/components/ui/lazy-qr-code";
 import { Check, Copy, QrCode, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog } from "@/components/ui/dialog";

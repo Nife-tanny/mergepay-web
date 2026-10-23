@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG } from "@/components/ui/lazy-qr-code";
 import CopyButton from "../ui/CopyButton";
 import { Card, CardContent } from "../ui/card";
 import { Input, Label } from "../ui/input";

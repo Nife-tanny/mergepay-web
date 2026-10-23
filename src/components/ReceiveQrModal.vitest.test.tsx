@@ -54,11 +54,12 @@ describe("ReceiveQrModal", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the QR code encoding the full public key without truncation", () => {
+  it("renders the QR code encoding the full public key without truncation", async () => {
     renderModal();
     expect(screen.getByText(/receive money/i)).toBeInTheDocument();
 
-    const qr = screen.getByTestId("qr-code");
+    // The QR encoder is code-split (#707), so the code arrives a tick later.
+    const qr = await screen.findByTestId("qr-code");
     expect(qr.getAttribute("data-value")).toBe(VALID_ADDRESS);
   });
 
@@ -104,11 +105,11 @@ describe("ReceiveQrModal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("encodes an optional transaction URI instead of the address", () => {
+  it("encodes an optional transaction URI instead of the address", async () => {
     const uri = "web+stellar:pay?destination=GABC&amount=10&memo=hi";
     renderModal({ transactionUri: uri });
 
-    expect(screen.getByTestId("qr-code").getAttribute("data-value")).toBe(uri);
+    expect((await screen.findByTestId("qr-code")).getAttribute("data-value")).toBe(uri);
     expect(screen.getByLabelText(/transaction uri/i)).toBeInTheDocument();
   });
 

@@ -13,7 +13,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { InviteMemberModal } from "./InviteMemberModal";
 import { useCreateInvite } from "@/lib/queries";
 import { describeInviteFailure, isSafeInviteUrl } from "@/lib/inviteLink";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG } from "@/components/ui/lazy-qr-code";
 import {
   useArchiveGroup,
   useLeaveGroup,

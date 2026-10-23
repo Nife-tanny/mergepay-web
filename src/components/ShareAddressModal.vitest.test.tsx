@@ -42,7 +42,7 @@ describe("ShareAddressModal", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the QR code encoding the full Stellar public key", () => {
+  it("renders the QR code encoding the full Stellar public key", async () => {
     render(
       <ShareAddressModal open onClose={vi.fn()} stellarPublicKey={VALID_ADDRESS} />
     );
@@ -50,7 +50,8 @@ describe("ShareAddressModal", () => {
     expect(screen.getByText(/share your address/i)).toBeInTheDocument();
     // The full 56-character key is encoded, even though the readout below the
     // QR is truncated for display.
-    expect(screen.getByTestId("qr-canvas").getAttribute("data-value")).toBe(
+    // The QR encoder is code-split (#707), so the canvas arrives a tick later.
+    expect((await screen.findByTestId("qr-canvas")).getAttribute("data-value")).toBe(
       VALID_ADDRESS
     );
   });

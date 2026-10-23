@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, KeyRound, Link2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog } from "@/components/ui/dialog";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG } from "@/components/ui/lazy-qr-code";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FieldHint } from "@/components/ui/input";
 import { copyTextToClipboard } from "@/lib/clipboard";
