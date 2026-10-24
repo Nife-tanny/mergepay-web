@@ -56,6 +56,7 @@ import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { isNetworkMismatch, type SettleTarget } from "@/lib/useSettlementFlow";
 import { notifySettlementFailure } from "@/lib/settlementToasts";
+import { verifyTrustlineBeforeSettlement } from "@/lib/settlement/trustline";
 import {
   SettlementVerificationError,
   classifySettlementError,
@@ -105,6 +106,12 @@ const PROGRESS: { id: Exclude<SettlementModalStep, "error">; label: string }[] =
 
 type SignPhase = "preparing" | "verifying" | "wallet";
 type SubmitPhase = "sending" | "confirming";
+type TrustlineStatus = "checking" | "ready" | "missing" | "unavailable";
+
+interface TrustlineCheck {
+  key: string;
+  status: TrustlineStatus;
+}
 
 export function SettlementModal({ open, onClose, groupId, target, onSettled, timeouts }: SettlementModalProps) {
   const limits = { ...DEFAULT_SETTLEMENT_TIMEOUTS, ...timeouts };
@@ -122,6 +129,16 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
   const [settlementId, setSettlementId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [settled, setSettled] = useState<Settlement | null>(null);
+  const trustlineKey = target
+    ? JSON.stringify([target.to.stellarPublicKey, target.assetCode, target.assetIssuer])
+    : "";
+  const [trustlineCheck, setTrustlineCheck] = useState<TrustlineCheck>({ key: "", status: "checking" });
+  const trustlineStatus =
+    !target || target.assetIssuer === null
+      ? "ready"
+      : trustlineCheck.key === trustlineKey
+        ? trustlineCheck.status
+        : "checking";
 
   // Each attempt gets an AbortController and a run id; anything that
   // resolves after the modal closed or a newer attempt started is dropped.
@@ -135,6 +152,30 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
   }, []);
 
   useEffect(() => cancelInFlight, [cancelInFlight]);
+
+  useEffect(() => {
+    if (!open || !target || target.assetIssuer === null) return;
+
+    const key = trustlineKey;
+    let cancelled = false;
+    setTrustlineCheck({ key, status: "checking" });
+    void verifyTrustlineBeforeSettlement(
+      target.to.stellarPublicKey,
+      target.assetCode,
+      target.assetIssuer
+    ).then(
+      (hasTrustline) => {
+        if (!cancelled) setTrustlineCheck({ key, status: hasTrustline ? "ready" : "missing" });
+      },
+      () => {
+        if (!cancelled) setTrustlineCheck({ key, status: "unavailable" });
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, target?.to.stellarPublicKey, target?.assetCode, target?.assetIssuer, trustlineKey]);
 
   // Reset once the modal is closed so the next open starts at "review".
   useEffect(() => {
@@ -167,6 +208,25 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
     abortRef.current = controller;
     const run = runRef.current;
     return { signal: controller.signal, isCurrent: () => runRef.current === run && !controller.signal.aborted };
+  }
+
+  async function checkRecipientTrustline(isCurrent: () => boolean): Promise<boolean> {
+    if (!target) return false;
+    const key = trustlineKey;
+    setTrustlineCheck({ key, status: "checking" });
+    try {
+      const hasTrustline = await verifyTrustlineBeforeSettlement(
+        target.to.stellarPublicKey,
+        target.assetCode,
+        target.assetIssuer
+      );
+      if (!isCurrent()) return false;
+      setTrustlineCheck({ key, status: hasTrustline ? "ready" : "missing" });
+      return hasTrustline;
+    } catch {
+      if (isCurrent()) setTrustlineCheck({ key, status: "unavailable" });
+      return false;
+    }
   }
 
   function fail(e: unknown, at: Exclude<SettlementModalStep, "error">) {
@@ -210,6 +270,7 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
   async function run() {
     if (!target || !wallet.canSign) return;
     const { signal, isCurrent } = begin();
+    if (!(await checkRecipientTrustline(isCurrent)) || !isCurrent()) return;
     setError(null);
     setSubmitted(false);
     setSettlementId(null);
@@ -254,6 +315,11 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
         amount: target.expenseId ? null : target.amount,
       };
       verifySettlementEnvelope(inspectSettlementXdr(intent.xdr, intent.networkPassphrase), expected);
+
+      if (!(await checkRecipientTrustline(isCurrent)) || !isCurrent()) {
+        setStep("review");
+        return;
+      }
 
       setSignPhase("wallet");
       const signedXdr = await withDeadline(
@@ -333,6 +399,30 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
             {step === "review" && (
               <div className="space-y-4">
                 <RecipientCard target={target} />
+                {trustlineStatus === "checking" && target.assetIssuer !== null && (
+                  <p className="text-sm text-ink/60" role="status">
+                    Checking {target.to.displayName}&apos;s {target.assetCode} trustline…
+                  </p>
+                )}
+                {trustlineStatus === "missing" && (
+                  <div className="flex items-start gap-3 rounded-2xl border-3 border-ink bg-flamingo-pale p-4 shadow-brutal-sm" role="alert" data-testid="trustline-warning">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                    <p className="text-sm">
+                      {target.to.displayName} needs an active {target.assetCode} trustline before they can receive this settlement. Ask them to add it in their Stellar wallet.
+                    </p>
+                  </div>
+                )}
+                {trustlineStatus === "unavailable" && (
+                  <div className="flex items-start gap-3 rounded-2xl border-3 border-ink bg-butter p-4 shadow-brutal-sm" role="alert">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                    <div className="space-y-2">
+                      <p className="text-sm">The recipient&apos;s {target.assetCode} trustline could not be verified. Settlement is paused until the network check succeeds.</p>
+                      <Button variant="ghost" size="sm" onClick={() => void checkRecipientTrustline(() => true)}>
+                        <RefreshCcw className="h-4 w-4" /> Check again
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex rounded-xl border-2 border-ink bg-paper p-1">
                   <button
                     type="button"
@@ -380,7 +470,11 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
                       <Button variant="ghost" onClick={close}>
                         Cancel
                       </Button>
-                      <Button onClick={run} disabled={!wallet.canSign} title={wallet.canSign ? undefined : wallet.message}>
+                      <Button
+                        onClick={run}
+                        disabled={!wallet.canSign || trustlineStatus !== "ready"}
+                        title={!wallet.canSign ? wallet.message : undefined}
+                      >
                         <Wallet className="h-4 w-4" /> Confirm & sign
                       </Button>
                     </div>
