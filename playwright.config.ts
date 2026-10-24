@@ -20,6 +20,9 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
+    // Fail a click on a missing element in seconds rather than at the test
+    // timeout, so one stuck locator can't use up the CI step's time budget.
+    actionTimeout: isCI ? 10_000 : 0,
   },
   projects: [
     {
